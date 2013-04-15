@@ -1,6 +1,8 @@
-(ns new-transcience.player 
+(ns new-transcience.player
   (:require [new-transcience.core :as core]
             [new-transcience.engine :as engine]))
+
+(declare player)
 
 (defn move [{:keys [vx x] :as me} input? max-speed acceleration decelartion]
   (let [decelartion (if (:jumping me) 0.1 decelartion)
@@ -20,13 +22,29 @@
       (-> moved
           (assoc :vx neue-vx)))))
 
+
 (defn reset [me]
-  (if (> (:y me) 650)
-    (-> me
-        (assoc :x 50)
-        (assoc :y 50)
-        (assoc :vy 0))
-    me))
+  (let [{:keys [x y]} (or @core/start-spot {:x 50 :y 0} )]
+    ;;reset if the player is out of bounds or finished with the game
+    (if (or (> (:y me) 650) (:finished me) (:killed me))
+      (-> me
+          (assoc :x x)
+          (assoc :y y)
+          (assoc :vy 0)
+          (assoc :vx 0)
+          (assoc :finished false)
+          (assoc :killed false))
+      me)))
+
+(defn check-finish [{:keys [x y] :as me}]
+  (let [end-spot (or @core/end-spot {:x 550 :y 400} )]
+    (if (and (core/close-enough? x (:x end-spot) 20)
+             (core/close-enough? y (:y end-spot) 20))
+      (do
+        (core/next-level)
+        (assoc me :finished true))
+      me)))
+
 
 (defn gravity [{:keys [vy y] :as me}]
   (let [g 0.8
@@ -57,7 +75,7 @@
 (defn phase [me]
   (let [max-phasing-cycles 20
         cool-down-cycles 20]
-    (if (:phasing me) 
+    (if (:phasing me)
       (if (> max-phasing-cycles (:phasing-count me))
         (update-in me [:phasing-count] inc)
         (assoc me :phasing false :phasing-count 0 :cool-down-count 0))
@@ -90,6 +108,8 @@
           (assoc me :painted false))
         me))))
 
+(defn die [me]
+  (swap! player assoc :killed true))
 
 (defn update-player [me]
   (-> me
@@ -97,10 +117,11 @@
       (move core/input? 15 0.5 1)
       (jump)
       (phase)
-      (change-color)
       (reset)
+      (check-finish)
       ))
 
-(def player (engine/create-circle {:color "black" }))
+(def player (engine/create-image-character "assets/main-character.png" 0.5 0.5 25 25 12.5))
+
 ;; Start the player loop
 (def game (js/setInterval #(swap! player update-player) 15))

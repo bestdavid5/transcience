@@ -4,27 +4,27 @@
             [new-transcience.player :as player]
             [new-transcience.engine :as engine]))
 
+;; We're going to implement Blackboard Architechture
+(def blackboard (atom []))
 
-(def ->flip-dir 
+(+ 1 2)
+
+(def ->flip-dir
   {:right :left
    :left :right
    nil :right})
 
-
 ;; Access the atom and return the immutable hash map
 (defn find-player []
   @player/player)
-
-(defn close-enough? [num1 num2 max-dist]
-  (< (Math/abs (- num1 num2)) max-dist))
 
 
 (defn dir-of? [dir dude1 dude2]
   (let [{:keys [x y]} dude1
         x2 (:x dude2)
         y2 (:y dude2)]
-    (and (close-enough? y y2 50)
-         (close-enough? x x2 80)
+    (and (core/close-enough? y y2 50)
+         (core/close-enough? x x2 80)
          (condp = dir
            :left (< x x2)
            :right (> x x2)
@@ -54,14 +54,21 @@
         acceleration (if chasing 1 acc)
         input? {dir true}]
     (if (> dir-time max-dir-time)
-      (assoc enemy :dir (->flip-dir dir) :dir-time 0) 
-      (-> 
+      (assoc enemy :dir (->flip-dir dir) :dir-time 0)
+      (->
         enemy
         (update-in [:dir-time] inc)
         (player/move input? 4 acceleration 1)))))
 
+(defn kill [{:keys [x y] :as enemy}]
+ (let [player (find-player)]
+   (if (core/close-enough? y (:y player) 10)
+    (if (core/close-enough? x (:x player) 10)
+     (player/die player))))
+  enemy)
+
 (defn dont-fall [{:keys [dir x y vx acc] :as enemy}]
-  (let [ 
+  (let [
         steps-ahead (max 2 (inc (/ vx acc))) ;; How far ahead we should look to make sure the dude doesn't fall
         future-state (last (take steps-ahead (iterate (comp player/gravity move) enemy)))
         future-vy (:vy future-state)]
@@ -76,7 +83,7 @@
   (let [acc 0.5
         left-state (assoc entity :dir :left)
         right-state (assoc entity :dir :right)]
-    (map 
+    (map
       (fn [e]
         (:x
           (first (remove #(= 0 (:vy %)) (iterate (comp player/gravity move) e)))))
@@ -86,8 +93,8 @@
   (min (map (comp Math/abs (partial - x)) edges)))
 
 (defn efficient-dont-fall [{:keys [acc vx dir] :as entity}]
-  (let [stopping-distance (/ (Math/pow vx 2) (* 2 acc))] 
-    (if (close-enough? (distance-from-edge entity) stopping-distance 10)
+  (let [stopping-distance (/ (Math/pow vx 2) (* 2 acc))]
+    (if (core/close-enough? (distance-from-edge entity) stopping-distance 10)
       ;; They are falling, uh oh lets turn them around so they don't commit suicide
       (assoc entity :dir (->flip-dir dir) :dir-time 0)
       ;; They aren't falling lets let them be
@@ -101,11 +108,11 @@
       (assoc enemy :dir (->flip-dir dir) :dir-time 0)
       enemy)))
 
-(defn reset [{:keys [x y] :as enemy}]
+(defn reset [{:keys [x y start-x start-y] :as enemy}]
   (if (or (> x 1000) (> y 1000))
-    (assoc enemy :vy 0 :vx 0 :x 50 :y 350 :edges (find-edges enemy ))
+    (assoc enemy :vy 0 :vx 0 :x start-x :y start-y :edges (find-edges enemy ))
     enemy))
-        
+
 (defn standard-enemy-routine [enemy]
   (-> enemy
       (reset)
@@ -113,13 +120,28 @@
       (dont-stand-still)
       (chase)
       (move)
+      (kill)
     ))
-      
-
-(def enemy (engine/create-circle {:color "green" :acc 0.5}))
-(swap! enemy assoc :x 50 :y 350)
 
 (def enemy-update-fns (atom []))
+(def enemies (atom []))
+
+
+(defn make-enemy [x y type]
+  (let [enemy (engine/create-image-character "assets/alien.png" 1 1 17 15 16)]
+    (.log js/console "making an enemy at" x y)
+    (swap! enemy assoc :acc 0.5 :start-x x :start-y y)
+    (swap! enemy assoc :x x :y y)
+    (swap! enemies conj enemy)
+    (condp = type
+      :normal (swap! enemy-update-fns conj #(swap! enemy standard-enemy-routine)))))
+
+;(make-enemy 50 350 :normal)
+
+;(def enemy (engine/create-circle {:color "green" :acc 0.5 :start-x 50 :start-y 350}))
+;(swap! enemy assoc :x 50 :y 350)
+;(swap! enemy-update-fns conj #(swap! enemy standard-enemy-routine))
+
 
 (def enemy-loop
   (js/setInterval
@@ -127,4 +149,9 @@
       (update-enemy))
     20))
 
-(swap! enemy-update-fns conj #(swap! enemy standard-enemy-routine))
+
+
+
+
+
+
